@@ -1,0 +1,6 @@
+{
+  "name": "LaTeX Resume Generator",
+  "description": "An interactive resume builder with dynamic section forms, A4 live preview, custom page-fit toggles, and instant LaTeX .tex download.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
