@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -604,13 +603,17 @@ ${careerVaultText}
 
   // Vite Integration
   if (process.env.NODE_ENV !== "production") {
-    createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    }).then((vite) => {
-      app.use(vite.middlewares);
+    import("vite").then(({ createServer: createViteServer }) => {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      }).then((vite) => {
+        app.use(vite.middlewares);
+      }).catch((err) => {
+        console.error("Vite Dev Server creation error:", err);
+      });
     }).catch((err) => {
-      console.error("Vite Dev Server creation error:", err);
+      console.error("Failed to dynamically import 'vite':", err);
     });
   } else {
     if (!process.env.VERCEL) {
