@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const MONGO_URI = process.env.MONGODB_URI || "mongodb+srv://satya:Somu%408249@cluster0.lvwyuue.mongodb.net/resume_generator";
+const MONGO_URI = process.env.MONGODB_URI || "MOGO_URI";
 
 let isConnected = false;
 
