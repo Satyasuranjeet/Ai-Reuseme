@@ -10,16 +10,13 @@ dotenv.config();
 
 const PORT = 3000;
 
-async function startServer() {
-  const app = express();
-  app.use(express.json({ limit: "15mb" }));
+export const app = express();
+app.use(express.json({ limit: "15mb" }));
 
-  // Establish standard database connection safely without crashing development server
-  try {
-    await connectDB();
-  } catch (err) {
-    console.error("Critical warning: Initial MongoDB Atlas connection failed. Server will continue launching.", err);
-  }
+// Establish standard database connection safely without crashing development server
+connectDB().catch((err) => {
+  console.error("Critical warning: Initial MongoDB Atlas connection failed.", err);
+});
 
   // Dynamic redirect URI helper for Google OAuth 2.0
   const getRedirectUri = (req: express.Request) => {
@@ -484,22 +481,28 @@ ${careerVaultText}
 
   // Vite Integration
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
+    }).then((vite) => {
+      app.use(vite.middlewares);
+    }).catch((err) => {
+      console.error("Vite Dev Server creation error:", err);
     });
-    app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    if (!process.env.VERCEL) {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+  }
+
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server launched and listening coordinates: http://localhost:${PORT}`);
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server launched and listening coordinates: http://localhost:${PORT}`);
-  });
-}
-
-startServer();
+export default app;
