@@ -6,14 +6,19 @@ let isConnected = false;
 let connectionPromise: Promise<any> | null = null;
 
 export async function connectDB() {
-  if (isConnected || mongoose.connection.readyState === 1) {
+  if (mongoose.connection.readyState === 1) {
     isConnected = true;
     return;
   }
 
   if (connectionPromise) {
-    await connectionPromise;
-    return;
+    try {
+      await connectionPromise;
+      return;
+    } catch (err) {
+      connectionPromise = null;
+      throw err;
+    }
   }
 
   if (!MONGO_URI) {
@@ -22,9 +27,11 @@ export async function connectDB() {
 
   try {
     console.log("Connecting to MongoDB Atlas...");
-    // Create a connection promise to prevent concurrent connect calls and ensure proper command buffering
+    // Configured with fast timeout to avoid serverless function execution timeouts in Vercel
     connectionPromise = mongoose.connect(MONGO_URI, {
       bufferCommands: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     });
     const db = await connectionPromise;
     isConnected = db.connection.readyState === 1;
@@ -32,6 +39,7 @@ export async function connectDB() {
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
     connectionPromise = null; // Clear promise on error so that retries are possible
+    isConnected = false;
     throw error;
   }
 }

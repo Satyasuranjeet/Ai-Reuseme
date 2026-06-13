@@ -12,11 +12,6 @@ const PORT = 3000;
 export const app = express();
 app.use(express.json({ limit: "15mb" }));
 
-// Establish standard database connection safely without crashing development server
-connectDB().catch((err) => {
-  console.error("Critical warning: Initial MongoDB Atlas connection failed.", err);
-});
-
 // Middleware to secure all database transactions by ensuring the connection is active
 app.use("/api", async (req, res, next) => {
   if (req.path === "/health") {
