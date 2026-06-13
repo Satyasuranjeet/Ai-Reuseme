@@ -37,101 +37,42 @@ import { initialResumeData, defaultSettings } from "./initialState";
 import { generateLatex } from "./latexGenerator";
 import LandingPage from "./components/LandingPage";
 
-import { useUser, useAuth } from "@clerk/clerk-react";
 
 export default function App() {
   // State for resume data and settings
   const [resumeData, setResumeData] = useState<ResumeData>(initialResumeData);
   const [settings, setSettings] = useState<PageSettings>(defaultSettings);
   
-  // Clerk Hook Integrations
-  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useUser();
-  const { signOut: clerkSignOut } = useAuth();
-
   // User Authentication and MongoDB states
   const [user, setUser] = useState<{ email: string; name: string; picture: string } | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [cloudSaveStatus, setCloudSaveStatus] = useState<"synced" | "saving" | "error" | "unsaved" | "none">("none");
-  const [clerkError, setClerkError] = useState<string>("");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const isInitialLoadDone = useRef<boolean>(false);
 
-  // Synchronize Clerk state with local application authentication context and perform pre-verification
+  // Restore native session token and user from localStorage on boot
   useEffect(() => {
-    if (isClerkLoaded) {
-      if (isClerkSignedIn && clerkUser) {
-        const verifyUser = async () => {
-          setIsVerifying(true);
-          try {
-            const email = clerkUser.primaryEmailAddress?.emailAddress || "";
-            const name = clerkUser.fullName || clerkUser.username || email.split("@")[0] || "";
-            const picture = clerkUser.imageUrl || "";
-            const action = localStorage.getItem("clerk_auth_action") || "login";
-
-            const res = await fetch("/api/auth/verify-clerk", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                clerkId: clerkUser.id,
-                email,
-                name,
-                picture,
-                action
-              })
-            });
-
-            const data = await res.json();
-            if (res.ok) {
-              setUser({ email, name, picture });
-              setToken(clerkUser.id);
-              setShowLanding(false);
-              setClerkError("");
-            } else {
-              setClerkError(data.error || "Verification failed.");
-              setUser(null);
-              setToken(null);
-              setShowLanding(true);
-              try {
-                await clerkSignOut();
-              } catch (errSig) {
-                console.error("Clerk pre-verification sign out error:", errSig);
-              }
-            }
-          } catch (err) {
-            console.error("Clerk pre-verification check failed:", err);
-            setClerkError("Failed to check database credentials. Please try again.");
-            setUser(null);
-            setToken(null);
-            setShowLanding(true);
-            try {
-              await clerkSignOut();
-            } catch (errSig) {}
-          } finally {
-            setIsVerifying(false);
-          }
-        };
-
-        verifyUser();
-      } else {
-        setUser(null);
-        setToken(null);
-        setShowLanding(true);
+    const storedToken = localStorage.getItem("satya_resume_token");
+    const storedUserStr = localStorage.getItem("satya_resume_user");
+    if (storedToken && storedUserStr) {
+      try {
+        const storedUser = JSON.parse(storedUserStr);
+        setToken(storedToken);
+        setUser(storedUser);
+        setShowLanding(false);
+      } catch (err) {
+        console.error("Local storage session restore failure:", err);
       }
     }
-  }, [isClerkLoaded, isClerkSignedIn, clerkUser]);
+  }, []);
 
-  // General auth headers provider that dynamically passes Clerk identifiers
+  // General auth headers provider that dynamically passes custom auth token
   const getAuthHeaders = () => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`
     };
-    if (token && token.startsWith("user_") && user) {
-      headers["x-clerk-email"] = user.email;
-      headers["x-clerk-name"] = user.name;
-      headers["x-clerk-picture"] = user.picture;
-    }
     return headers;
   };
 
@@ -229,13 +170,6 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (isClerkSignedIn) {
-      try {
-        await clerkSignOut();
-      } catch (e) {
-        console.error("Clerk sign-out warning:", e);
-      }
-    }
     localStorage.removeItem("satya_resume_token");
     localStorage.removeItem("satya_resume_user");
     setToken(null);
@@ -1012,11 +946,7 @@ export default function App() {
   if (showLanding) {
     return (
       <LandingPage 
-        clerkError={clerkError} 
-        setClerkError={clerkError => {
-          setClerkError(clerkError);
-        }} 
-        isVerifying={isVerifying} 
+        onLoginSuccess={handleLoginSuccess} 
       />
     );
   }

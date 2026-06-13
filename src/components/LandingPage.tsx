@@ -3,7 +3,7 @@ import {
   Sparkles, 
   Database, 
   LogIn, 
-  User, 
+  User as UserIcon, 
   ExternalLink, 
   ShieldCheck, 
   FileCode, 
@@ -20,21 +20,71 @@ import {
   FileText
 } from "lucide-react";
 import { motion } from "motion/react";
-import { SignInButton, SignUpButton } from "@clerk/clerk-react";
 
 interface LandingPageProps {
-  clerkError: string;
-  setClerkError: (err: string) => void;
-  isVerifying: boolean;
+  onLoginSuccess: (token: string, user: { email: string; name: string; picture: string }) => void;
 }
 
-export default function LandingPage({ clerkError, setClerkError, isVerifying }: LandingPageProps) {
-  // Check if Clerk configuration is active in current env
-  const clerkPublishableKey = (import.meta as any).env.VITE_CLERK_PUBLISHABLE_KEY || "";
-  const isClerkConfigured = !!clerkPublishableKey;
-
+export default function LandingPage({ onLoginSuccess }: LandingPageProps) {
   // Detect if running inside an iframe (e.g., the AI Studio development environment)
   const isInIframe = typeof window !== "undefined" && window.self !== window.top;
+
+  // Custom DB Authentication Form States
+  const [isLoginMode, setIsLoginMode] = useState<boolean>(true);
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [name, setName] = useState<string>("");
+  const [authError, setAuthError] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Form submission handler to custom MongoDB endpoints
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    
+    if (!email.trim() || !password) {
+      setAuthError("Email and password are required.");
+      return;
+    }
+
+    if (!isLoginMode && !name.trim()) {
+      setAuthError("Full Name is required for registration.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
+      const payload = isLoginMode 
+        ? { email: email.trim(), password }
+        : { email: email.trim(), password, name: name.trim() };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Authentication procedure failed.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Lift user and generated session token up to the parent application view
+      if (data.token && data.user) {
+        onLoginSuccess(data.token, data.user);
+      } else {
+        setAuthError("Invalid session payload returned from server.");
+      }
+    } catch (err: any) {
+      console.error("Auth server error:", err);
+      setAuthError("Failed to reach server. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#07080B] text-zinc-200 font-sans relative overflow-x-hidden selection:bg-yellow-500/30 selection:text-yellow-200 flex flex-col justify-between">
@@ -107,7 +157,7 @@ export default function LandingPage({ clerkError, setClerkError, isVerifying }: 
               </div>
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-yellow-500" />
-                <span>100% Secure Clerk SSO</span>
+                <span>100% Native Secure DB Login</span>
               </div>
             </div>
           </div>
@@ -125,87 +175,116 @@ export default function LandingPage({ clerkError, setClerkError, isVerifying }: 
                 <LogIn className="w-4 h-4 text-yellow-500" /> Cloud Sync Gateway
               </h2>
 
-              <p className="text-[11px] text-zinc-450 leading-relaxed font-sans mb-5">
-                Authenticate in one click to unlock cloud save with your secure MongoDB instance, activate the AI ATS scoring diagnostics, and save your career vaults.
-              </p>
+              {/* Secure Auth Tab Selector */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-900 rounded-none mb-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoginMode(true);
+                    setAuthError("");
+                  }}
+                  className={`py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold transition duration-150 ${
+                    isLoginMode 
+                      ? "bg-yellow-500 text-black" 
+                      : "text-zinc-450 hover:text-zinc-200"
+                  }`}
+                >
+                  Log In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoginMode(false);
+                    setAuthError("");
+                  }}
+                  className={`py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold transition duration-150 ${
+                    !isLoginMode 
+                      ? "bg-yellow-500 text-black" 
+                      : "text-zinc-450 hover:text-zinc-200"
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
 
-              {/* Iframe Redirect Warning with New Tab Button */}
-              {isInIframe && (
-                <div className="p-3.5 mb-5 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-[10.5px] font-sans rounded-none leading-relaxed text-left space-y-2">
-                  <div className="flex items-center gap-1.5 font-mono text-yellow-500 uppercase font-black text-[9px] tracking-wider">
-                    <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
-                    <span>Sandbox Iframe Boundary Detected</span>
-                  </div>
-                  <p className="opacity-90 leading-tight">
-                    Clerk SSO authorization requires secure page redirections. To log in successfully, launch this application inside a clean web browser window.
-                  </p>
-                  <div className="pt-1.5">
-                    <a 
-                      href={window.location.href} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="w-full inline-flex items-center justify-center gap-1.5 text-[9.5px] uppercase font-mono tracking-wider bg-yellow-500 text-black px-3.5 py-2 font-bold hover:bg-yellow-450 transition text-center"
-                    >
-                      Open App In New Tab <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
+              {authError && (
+                <div className="p-3 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-sans rounded-none leading-relaxed text-left">
+                  {authError}
                 </div>
               )}
 
-              {clerkError && (
-                <div className="p-3 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-sans rounded-none leading-relaxed">
-                  {clerkError}
-                </div>
-              )}
-
-              {/* CLERK REGISTRATION PATHWAYS */}
-              <div className="space-y-3">
-                {isVerifying ? (
-                  <div className="p-4 bg-zinc-950 border border-zinc-850 text-center space-y-2.5">
-                    <div className="inline-block w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-                    <p className="font-mono text-[9px] uppercase text-zinc-500 tracking-widest">
-                      Establishing database connection...
-                    </p>
-                  </div>
-                ) : isClerkConfigured ? (
-                  <div className="space-y-2.5">
-                    <SignInButton mode="modal">
-                      <button 
-                        onClick={() => {
-                          localStorage.setItem("clerk_auth_action", "login");
-                          setClerkError("");
-                        }}
-                        className="w-full flex items-center justify-center gap-2.5 py-3 text-xs font-bold font-mono uppercase tracking-wider bg-yellow-500 hover:bg-yellow-450 text-black rounded-none transition duration-150 shadow-sm cursor-pointer border border-yellow-600"
-                      >
-                        <LogIn className="w-4 h-4" />
-                        Enter Application Workspace
-                      </button>
-                    </SignInButton>
-                    
-                    <SignUpButton mode="modal">
-                      <button 
-                        onClick={() => {
-                          localStorage.setItem("clerk_auth_action", "register");
-                          setClerkError("");
-                        }}
-                        className="w-full py-2.5 text-xs font-mono font-bold tracking-wider rounded-none bg-zinc-900/60 hover:bg-zinc-850 text-zinc-350 border border-zinc-800 hover:border-zinc-700 transition cursor-pointer"
-                      >
-                        Create Free Developer Profile
-                      </button>
-                    </SignUpButton>
-                  </div>
-                ) : (
-                  <div className="p-3.5 bg-zinc-900/40 border border-zinc-850/80 text-[10.5px] text-zinc-400 text-left space-y-2">
-                    <div className="flex items-center gap-1.5 font-mono text-yellow-500 uppercase font-black text-[9px] tracking-wider">
-                      <AlertTriangle className="w-3.5 h-3.5 text-yellow-505 shrink-0" />
-                      <span>Workspace Auth Status</span>
+              {/* NATIVE AUTHENTICATION FORM */}
+              <form onSubmit={handleAuthSubmit} className="space-y-4 text-left">
+                {!isLoginMode && (
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-mono text-zinc-450 uppercase tracking-widest font-black">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="John Doe"
+                        required
+                        className="w-full bg-zinc-950/80 border border-zinc-800 px-3.5 py-2 text-xs font-sans text-stone-200 placeholder-zinc-700 focus:outline-none focus:border-yellow-500/75 rounded-none"
+                      />
                     </div>
-                    <p className="font-sans leading-relaxed text-zinc-450">
-                      Standard environment mode: Setup your <code className="text-[10px] text-zinc-200 font-mono bg-zinc-950 px-1 py-0.5 border border-zinc-850">VITE_CLERK_PUBLISHABLE_KEY</code> credentials to enable production MongoDB cloud integrations.
-                    </p>
                   </div>
                 )}
-              </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono text-zinc-450 uppercase tracking-widest font-black">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@domain.com"
+                    required
+                    className="w-full bg-zinc-950/80 border border-zinc-800 px-3.5 py-2 text-xs font-sans text-stone-200 placeholder-zinc-700 focus:outline-none focus:border-yellow-500/75 rounded-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-mono text-zinc-450 uppercase tracking-widest font-black">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    required
+                    className="w-full bg-zinc-950/80 border border-zinc-800 px-3.5 py-2 text-xs font-sans text-stone-200 placeholder-zinc-700 focus:outline-none focus:border-yellow-500/75 rounded-none"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold font-mono uppercase tracking-wider bg-yellow-500 hover:bg-yellow-450 text-black rounded-none transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed border border-yellow-600 font-black cursor-pointer"
+                  >
+                    {isLoading ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        <span>Verifying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>{isLoginMode ? "Enter Workspace" : "Create Developer Profile"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              <p className="text-[10px] text-zinc-600 text-center mt-5 uppercase tracking-wider font-mono">
+                • MongoDB Secured Authentication •
+              </p>
             </div>
           </div>
         </section>

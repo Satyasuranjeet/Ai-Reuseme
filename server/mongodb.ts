@@ -27,11 +27,13 @@ export async function connectDB() {
   }
 }
 
-// User schema storing Clerk credentials, profile info, and resume settings
+// User schema storing credentials, profile info, and resume settings
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   clerkId: { type: String, sparse: true, unique: true },
   googleId: { type: String, sparse: true },
+  passwordHash: { type: String },
+  salt: { type: String },
   name: { type: String },
   picture: { type: String },
   resumeData: { type: Object, default: null },

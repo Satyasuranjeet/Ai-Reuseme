@@ -167,7 +167,98 @@ connectDB().catch((err) => {
     }
   });
 
-  // Endpoint 3: Verify Clerk user session database existence prior to granting access
+  // Helper function for password hashing using pbkdf2 and Node's built-in crypto
+  const hashPassword = (password: string, salt: string): string => {
+    return crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  };
+
+  // Endpoint 3: Native user registration with email and password
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, name } = req.body;
+      if (!email || !password) {
+        return res.status(405).json({ error: "Email and password are required." });
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const existingUser = await User.findOne({ email: cleanEmail });
+      if (existingUser) {
+        return res.status(400).json({ error: "An account with this email already exists." });
+      }
+
+      // Generate secure salt and hash the password
+      const salt = crypto.randomBytes(16).toString("hex");
+      const passwordHash = hashPassword(password, salt);
+      const sessionToken = `session-${crypto.randomUUID()}`;
+
+      // Create new user document
+      const userDoc = new User({
+        email: cleanEmail,
+        name: name ? name.trim() : cleanEmail.split("@")[0],
+        picture: `https://api.dicebear.com/7.x/identicon/svg?seed=${cleanEmail}`,
+        salt,
+        passwordHash,
+        sessionToken
+      });
+
+      await userDoc.save();
+
+      res.json({
+        success: true,
+        token: sessionToken,
+        user: {
+          email: userDoc.email,
+          name: userDoc.name,
+          picture: userDoc.picture
+        }
+      });
+    } catch (err: any) {
+      console.error("Native registration crash:", err);
+      res.status(500).json({ error: "Internal server error during registration." });
+    }
+  });
+
+  // Endpoint 3.5: Native user login with email and password
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(405).json({ error: "Email and password are required." });
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const userDoc = await User.findOne({ email: cleanEmail });
+      if (!userDoc || !userDoc.passwordHash || !userDoc.salt) {
+        return res.status(400).json({ error: "Invalid email or password." });
+      }
+
+      // Verify password match
+      const checkHash = hashPassword(password, userDoc.salt);
+      if (checkHash !== userDoc.passwordHash) {
+        return res.status(400).json({ error: "Invalid email or password." });
+      }
+
+      // Generate or update session token
+      const sessionToken = `session-${crypto.randomUUID()}`;
+      userDoc.sessionToken = sessionToken;
+      await userDoc.save();
+
+      res.json({
+        success: true,
+        token: sessionToken,
+        user: {
+          email: userDoc.email,
+          name: userDoc.name,
+          picture: userDoc.picture
+        }
+      });
+    } catch (errValue: any) {
+      console.error("Native login crash:", errValue);
+      res.status(500).json({ error: "Internal server error during login." });
+    }
+  });
+
+  // Endpoint 3.8: Verify Clerk user session database existence prior to granting access
   app.post("/api/auth/verify-clerk", async (req, res) => {
     try {
       const { clerkId, email, name, picture, action } = req.body;
@@ -261,6 +352,11 @@ connectDB().catch((err) => {
           });
           await user.save();
         }
+      }
+
+      if (!user && token) {
+        // Native Email/Password or Dynamic OAuth session fallback
+        user = await User.findOne({ sessionToken: token });
       }
 
       if (!user) {
