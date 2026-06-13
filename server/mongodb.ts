@@ -3,26 +3,35 @@ import mongoose from "mongoose";
 const MONGO_URI = process.env.MONGODB_URI;
 
 let isConnected = false;
+let connectionPromise: Promise<any> | null = null;
 
 export async function connectDB() {
-  if (isConnected) {
+  if (isConnected || mongoose.connection.readyState === 1) {
+    isConnected = true;
+    return;
+  }
+
+  if (connectionPromise) {
+    await connectionPromise;
     return;
   }
 
   if (!MONGO_URI) {
-    console.warn("MongoDB setup warning: MONGODB_URI environment variable is not defined.");
-    return;
+    throw new Error("MONGODB_URI environment variable is not defined. Please configure it in your Settings > Secrets.");
   }
 
   try {
     console.log("Connecting to MongoDB Atlas...");
-    const db = await mongoose.connect(MONGO_URI, {
-      bufferCommands: false,
+    // Create a connection promise to prevent concurrent connect calls and ensure proper command buffering
+    connectionPromise = mongoose.connect(MONGO_URI, {
+      bufferCommands: true,
     });
+    const db = await connectionPromise;
     isConnected = db.connection.readyState === 1;
     console.log("MongoDB Atlas connected successfully.");
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
+    connectionPromise = null; // Clear promise on error so that retries are possible
     throw error;
   }
 }

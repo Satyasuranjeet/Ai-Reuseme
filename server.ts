@@ -18,6 +18,33 @@ connectDB().catch((err) => {
   console.error("Critical warning: Initial MongoDB Atlas connection failed.", err);
 });
 
+// Middleware to secure all database transactions by ensuring the connection is active
+app.use("/api", async (req, res, next) => {
+  if (req.path === "/health") {
+    return next();
+  }
+  try {
+    await connectDB();
+    next();
+  } catch (err: any) {
+    console.error("Critical: Database connection pending or failed in route guard:", err);
+    const msg = (err.message || "").toLowerCase();
+    if (msg.includes("mongodb_uri environment variable is not defined")) {
+      return res.status(503).json({
+        error: "MongoDB configuration is missing. Please define MONGODB_URI in your Settings > Secrets panel."
+      });
+    }
+    if (msg.includes("bad auth") || msg.includes("authentication failed")) {
+      return res.status(503).json({
+        error: "MongoDB authentication failed. Please verify the username and password in your database connection string."
+      });
+    }
+    res.status(503).json({
+      error: `Database connection error: ${err.message || "The database service is temporarily offline."}`
+    });
+  }
+});
+
   // Dynamic redirect URI helper for Google OAuth 2.0
   const getRedirectUri = (req: express.Request) => {
     const host = req.headers.host || "localhost:3000";
